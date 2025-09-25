@@ -98,6 +98,7 @@ def test_build_ray_cluster_with_gcs_ft(mocker):
 
     gcs_ft_options = resource["spec"]["gcsFaultToleranceOptions"]
 
+    # redis_address provided to satisfy Cluster spec, not used by Ray 2.47.1 GCS
     assert gcs_ft_options["redisAddress"] == "redis:6379"
     assert gcs_ft_options["externalStorageNamespace"] == "new-ns"
     assert (
@@ -108,3 +109,12 @@ def test_build_ray_cluster_with_gcs_ft(mocker):
         gcs_ft_options["redisPassword"]["valueFrom"]["secretKeyRef"]["key"]
         == "password"
     )
+
+    # Ray 2.47.1 doesn't support external Redis GCS parameters
+    # The test should verify that gcsFaultToleranceOptions exist but
+    # rayStartParams don't contain unsupported parameters
+    head_ray_start_params = resource["spec"]["headGroupSpec"]["rayStartParams"]
+
+    # These parameters should NOT be in Ray 2.47.1 rayStartParams
+    assert "gcs-server-store-path" not in head_ray_start_params
+    assert "external-storage-namespace" not in head_ray_start_params

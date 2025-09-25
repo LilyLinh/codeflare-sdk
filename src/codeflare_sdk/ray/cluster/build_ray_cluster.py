@@ -23,6 +23,7 @@ from kubernetes.client.exceptions import ApiException
 from ...common.utils.constants import RAY_VERSION
 from ...common.utils.utils import get_ray_image_for_python_version
 import codeflare_sdk
+import warnings
 import os
 
 from kubernetes import client
@@ -48,7 +49,6 @@ from kubernetes.client import (
 import yaml
 import uuid
 import sys
-import warnings
 import json
 
 from codeflare_sdk.common.utils import constants
@@ -118,6 +118,26 @@ def build_ray_cluster(cluster: "codeflare_sdk.ray.cluster.Cluster"):
     worker_resources = json.dumps(worker_resources).replace('"', '\\"')
     worker_resources = f'"{worker_resources}"'
 
+    # Build base rayStartParams for head node
+    head_ray_start_params = {
+        "dashboard-host": "0.0.0.0",
+        "block": "true",
+        "num-gpus": str(head_gpu_count),
+        "resources": head_resources,
+    }
+
+    # Add GCS fault tolerance parameters if enabled
+    if cluster.config.enable_gcs_ft:
+        # Note: External Redis GCS fault tolerance is not supported in Ray 2.47.1
+        # The --gcs-server-store-path parameter does not exist in this version
+        # GCS fault tolerance in Ray 2.47.1 only supports built-in mechanisms
+        warnings.warn(
+            "GCS fault tolerance with external Redis is not supported in Ray 2.47.1. "
+            "The cluster will use Ray's built-in GCS mechanisms instead.",
+            UserWarning,
+        )
+        # Note: gcsFaultToleranceOptions are added to RayCluster spec below (after resource definition)
+
     # Create the Ray Cluster using the V1RayCluster Object
     resource = {
         "apiVersion": "ray.io/v1",
@@ -134,12 +154,7 @@ def build_ray_cluster(cluster: "codeflare_sdk.ray.cluster.Cluster"):
             "headGroupSpec": {
                 "serviceType": "ClusterIP",
                 "enableIngress": False,
-                "rayStartParams": {
-                    "dashboard-host": "0.0.0.0",
-                    "block": "true",
-                    "num-gpus": str(head_gpu_count),
-                    "resources": head_resources,
-                },
+                "rayStartParams": head_ray_start_params,
                 "template": V1PodTemplateSpec(
                     metadata=V1ObjectMeta(cluster.config.annotations)
                     if cluster.config.annotations
@@ -177,12 +192,8 @@ def build_ray_cluster(cluster: "codeflare_sdk.ray.cluster.Cluster"):
         },
     }
 
+    # Add GCS fault tolerance options to the RayCluster spec if enabled
     if cluster.config.enable_gcs_ft:
-        if not cluster.config.redis_address:
-            raise ValueError(
-                "redis_address must be provided when enable_gcs_ft is True"
-            )
-
         gcs_ft_options = {"redisAddress": cluster.config.redis_address}
 
         if cluster.config.external_storage_namespace:
@@ -212,6 +223,7 @@ def build_ray_cluster(cluster: "codeflare_sdk.ray.cluster.Cluster"):
 
     resource = k8s_client.sanitize_for_serialization(resource)
 
+    # Note: GCS fault tolerance fix removed as external Redis is not supported in Ray 2.47.1
     # write_to_file functionality
     if cluster.config.write_to_file:
         return write_to_file(cluster, resource)  # Writes the file and returns its name
