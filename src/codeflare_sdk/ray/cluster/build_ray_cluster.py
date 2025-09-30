@@ -128,15 +128,9 @@ def build_ray_cluster(cluster: "codeflare_sdk.ray.cluster.Cluster"):
 
     # Add GCS fault tolerance parameters if enabled
     if cluster.config.enable_gcs_ft:
-        # Note: External Redis GCS fault tolerance is not supported in Ray 2.47.1
-        # The --gcs-server-store-path parameter does not exist in this version
-        # GCS fault tolerance in Ray 2.47.1 only supports built-in mechanisms
-        warnings.warn(
-            "GCS fault tolerance with external Redis is not supported in Ray 2.47.1. "
-            "The cluster will use Ray's built-in GCS mechanisms instead.",
-            UserWarning,
-        )
-        # Note: gcsFaultToleranceOptions are added to RayCluster spec below (after resource definition)
+        # Ray 2.47.1 supports external Redis GCS fault tolerance via gcsFaultToleranceOptions
+        # This provides high availability by persisting GCS state in external Redis
+        pass  # gcsFaultToleranceOptions are added to RayCluster spec below (after resource definition)
 
     # Create the Ray Cluster using the V1RayCluster Object
     resource = {
